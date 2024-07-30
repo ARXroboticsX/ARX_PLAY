@@ -1,0 +1,9 @@
+{
+  "python.analysis.extraPaths": [
+    "/home/boxjod/ARX_ACT/ARX_ACT_V2/realsense_camera/devel/lib/python3/dist-packages",
+    "/home/boxjod/OrbbecCam/cam_ws/devel/lib/python3/dist-packages",
+    "/opt/ros/noetic/lib/python3/dist-packages",
+    "/home/boxjod/sawyer_ws/devel/lib/python3.8/site-packages"
+  ],
+  "ros.distro": "noetic"
+}

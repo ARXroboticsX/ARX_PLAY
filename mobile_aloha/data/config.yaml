@@ -1,0 +1,37 @@
+camera_config:
+  original_image:
+    img_left_topic: '/camera_l/color/image_raw'
+    img_right_topic: '/camera_r/color/image_raw'
+    img_head_topic: '/camera_f/color/image_raw'
+
+    img_left_depth_topic: '/camera_l/depth/image_rect_raw'
+    img_right_depth_topic: '/camera_r/depth/image_rect_raw'
+    img_head_depth_topic: '/camera_f/depth/image_rect_raw'
+  compress_image:
+    img_left_topic: '/camera_l/color/image_raw/compressed'
+    img_right_topic: '/camera_r/color/image_raw/compressed'
+    img_head_topic: '/camera_f/color/image_raw/compressed'
+
+    img_left_depth_topic: '/camera_l/depth/image_rect_raw/compressed'
+    img_right_depth_topic: '/camera_r/depth/image_rect_raw/compressed'
+    img_head_depth_topic: '/camera_f/depth/image_rect_raw/compressed'
+
+arm_config:
+  master_arm_left_topic: '/joint_control'
+  master_arm_right_topic: '/joint_control2'
+  follow_arm_left_cmd_topic: '/joint_control'
+  follow_arm_right_cmd_topic: '/joint_control2'
+  
+  # the real joint position(follow arm in follow)
+  follow_arm_left_topic: '/joint_information'
+  follow_arm_right_topic: '/joint_information2'
+  
+  # eef
+  follow_arm_left_eef_topic: '/follow1_pos_back'
+  follow_arm_right_eef_topic: '/follow2_pos_back'
+  master_arm_left_eef_topic: '/master1_pos_back'
+  master_arm_right_eef_topic: '/master2_pos_back'
+
+base_config:
+  robot_base_topic: '/odom_raw'
+  robot_base_cmd_topic: '/cmd_vel'

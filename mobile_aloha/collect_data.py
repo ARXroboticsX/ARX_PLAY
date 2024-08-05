@@ -286,20 +286,41 @@ class RosOperator:
                 img_head = self.bridge.compressed_imgmsg_to_cv2(self.img_head_deque.pop(), 'passthrough') 
             
         else: # not recommend
-            img_left = self.bridge.imgmsg_to_cv2(self.img_left_deque.pop(), 'passthrough')
-            img_right = self.bridge.imgmsg_to_cv2(self.img_right_deque.pop(), 'passthrough')
-            img_head = self.bridge.imgmsg_to_cv2(self.img_head_deque.pop(), 'passthrough')
+            if 'cam_left_wrist' in self.opt.camera_names:
+                img_left = self.bridge.imgmsg_to_cv2(self.img_left_deque.pop(), 'passthrough')
+
+            if 'cam_right_wrist' in self.opt.camera_names:
+                img_right = self.bridge.imgmsg_to_cv2(self.img_right_deque.pop(), 'passthrough')
+
+            if 'cam_head' in self.opt.camera_names:
+                img_head = self.bridge.imgmsg_to_cv2(self.img_head_deque.pop(), 'passthrough')
         
         if self.opt.use_depth_image: # not recommend
             if self.opt.is_compress:
-                img_left_depth = self.bridge.compressed_imgmsg_to_cv2(self.img_left_depth_deque.pop(), 'passthrough')
-                img_right_depth = self.bridge.compressed_imgmsg_to_cv2(self.img_right_depth_deque.pop(), 'passthrough')
-                img_head_depth = self.bridge.compressed_imgmsg_to_cv2(self.img_head_depth_deque.pop(), 'passthrough')
+                if 'cam_left_wrist' in self.opt.camera_names:
+                    img_left_depth = self.bridge.compressed_imgmsg_to_cv2(self.img_left_depth_deque.pop(),
+                                                                          'passthrough')
+
+                if 'cam_right_wrist' in self.opt.camera_names:
+                    img_right_depth = self.bridge.compressed_imgmsg_to_cv2(self.img_right_depth_deque.pop(),
+                                                                           'passthrough')
+
+                if 'cam_head' in self.opt.camera_names:
+                    img_head_depth = self.bridge.compressed_imgmsg_to_cv2(self.img_head_depth_deque.pop(),
+                                                                          'passthrough')
             else:
-                img_left_depth = self.bridge.imgmsg_to_cv2(self.img_left_depth_deque.pop(), 'passthrough')
-                img_right_depth = self.bridge.imgmsg_to_cv2(self.img_right_depth_deque.pop(), 'passthrough')
-                img_head_depth = self.bridge.imgmsg_to_cv2(self.img_head_depth_deque.pop(), 'passthrough')
-                
+                if 'cam_left_wrist' in self.opt.camera_names:
+                    img_left_depth = self.bridge.imgmsg_to_cv2(self.img_left_depth_deque.pop(),
+                                                                          'passthrough')
+
+                if 'cam_right_wrist' in self.opt.camera_names:
+                    img_right_depth = self.bridge.imgmsg_to_cv2(self.img_right_depth_deque.pop(),
+                                                                           'passthrough')
+
+                if 'cam_head' in self.opt.camera_names:
+                    img_head_depth = self.bridge.imgmsg_to_cv2(self.img_head_depth_deque.pop(),
+                                                                          'passthrough')
+
         master_arm_left = self.master_arm_left_deque.pop()
         master_arm_left_eef = self.master_arm_left_eef_deque.pop() 
         

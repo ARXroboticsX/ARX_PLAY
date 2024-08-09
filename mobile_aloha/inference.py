@@ -457,7 +457,7 @@ class RosOperator:
         vel_msg.angular.z = vel[1]
         self.robot_base_publisher.publish(vel_msg)
 
-    def follow_arm_publish_continuous(self, left, right): # left个right都是固定的位置
+    def follow_arm_publish_continuous(self, left_target, right_target): # left个right都是固定的位置
         rate = rospy.Rate(self.opt.publish_rate)
         left_arm = None
         right_arm = None
@@ -469,7 +469,7 @@ class RosOperator:
             if len(self.follow_arm_right_deque) != 0:
                 right_arm = list(self.follow_arm_right_deque[-1].joint_pos)
                 
-            if left_arm is None or right_arm is None:
+            if left_arm is None and right_arm is None:
                 rate.sleep()
                 continue
             
@@ -477,39 +477,49 @@ class RosOperator:
                 break
         
         # 是否完成位移的标志位
-        left_symbol = [1 if left[i] - left_arm[i] > 0 else -1 for i in range(len(left))]
-        right_symbol = [1 if right[i] - right_arm[i] > 0 else -1 for i in range(len(right))]
+        left_symbol = [1 if left_target[i] - left_arm[i] > 0 else -1 for i in range(len(left_target))]
+        if right_arm:
+            right_symbol = [1 if right_target[i] - right_arm[i] > 0 else -1 for i in range(len(right_target))]
         flag = True
         step = 0
 
         while flag and not rospy.is_shutdown():
+            right_done = 0
+            left_done = 0
+
             if self.follow_arm_publish_lock.acquire(False):
                 return
 
-            left_diff = [abs(left[i] - left_arm[i]) for i in range(len(left))]
-            right_diff = [abs(right[i] - right_arm[i]) for i in range(len(right))]
-            flag = False
-
-            for i in range(len(left)):
+            left_diff = [abs(left_target[i] - left_arm[i]) for i in range(len(left_target))]
+            for i in range(len(left_target)):
                 if left_diff[i] < self.opt.arm_steps_length[i]:
-                    left_arm[i] = left[i]
+                    left_arm[i] = left_target[i]
+                    left_done = left_done + 1
                 else:
                     left_arm[i] += left_symbol[i] * self.opt.arm_steps_length[i]
-                    flag = True
 
-            for i in range(len(right)):
-                if right_diff[i] < self.opt.arm_steps_length[i]:
-                    right_arm[i] = right[i]
-                else:
-                    right_arm[i] += right_symbol[i] * self.opt.arm_steps_length[i]
-                    flag = True
-            
+            if right_arm:
+                right_diff = [abs(right_target[i] - right_arm[i]) for i in range(len(right_target))]
+                for i in range(len(right_target)):
+                    if right_diff[i] < self.opt.arm_steps_length[i]:
+                        right_arm[i] = right_target[i]
+                        right_done = right_done + 1
+                    else:
+                        right_arm[i] += right_symbol[i] * self.opt.arm_steps_length[i]
+
+            if right_arm:
+                if left_done > len(left_target) - 1 and right_done > len(right_target) - 1:
+                    print('left_done and right_done')
+                    break
+            elif left_done > len(left_target) - 1:
+                break
+
             joint_state_msg = JointControl()
             joint_state_msg.joint_pos = left_arm
             self.follow_arm_left_publisher.publish(joint_state_msg)
             joint_state_msg.joint_pos = right_arm
             self.follow_arm_right_publisher.publish(joint_state_msg)
-                        
+
             step += 1
             print("follow_arm_publish_continuous:", step)
             rate.sleep()
@@ -580,9 +590,12 @@ class RosOperator:
             img_head = self.bridge.imgmsg_to_cv2(self.img_head_deque.pop(), 'passthrough')
         
         if self.opt.use_depth_image: # not recommend
-            img_left_depth = self.bridge.imgmsg_to_cv2(self.img_left_depth_deque.pop(), 'passthrough')
-            img_right_depth = self.bridge.imgmsg_to_cv2(self.img_right_depth_deque.pop(), 'passthrough')
-            img_head_depth = self.bridge.imgmsg_to_cv2(self.img_head_depth_deque.pop(), 'passthrough')
+            if 'cam_left_wrist' in self.opt.camera_names:
+                img_left_depth = self.bridge.imgmsg_to_cv2(self.img_left_depth_deque.pop(), 'passthrough')
+            if 'cam_right_wrist' in self.opt.camera_names:
+                img_right_depth = self.bridge.imgmsg_to_cv2(self.img_right_depth_deque.pop(), 'passthrough')
+            if 'cam_head_wrist' in self.opt.camera_names:
+                img_head_depth = self.bridge.imgmsg_to_cv2(self.img_head_depth_deque.pop(), 'passthrough')
                 
         follow_arm_left = self.follow_arm_left_deque.pop()
         follow_arm_left_eef = self.follow_arm_left_eef_deque.pop() # 模型输出

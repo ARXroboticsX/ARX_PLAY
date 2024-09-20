@@ -29,8 +29,8 @@ arm_config:
   # eef
   follow_arm_left_eef_topic: '/follow1_pos_back'
   follow_arm_right_eef_topic: '/follow2_pos_back'
-  master_arm_left_eef_topic: '/master1_pos_back'
-  master_arm_right_eef_topic: '/master2_pos_back'
+  master_arm_left_eef_topic: '/ARX_VR_L'
+  master_arm_right_eef_topic: '/ARX_VR_R'
 
 base_config:
   robot_base_topic: '/odom_raw'

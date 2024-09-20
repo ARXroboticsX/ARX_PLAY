@@ -8,7 +8,7 @@ import struct
 
 
 class PosCmd(genpy.Message):
-  _md5sum = "1c57ab1c25d2c8b93367daa40ff13cae"
+  _md5sum = "df5f2abbfa9e683f82c8a2751cdc09f0"
   _type = "arm_control/PosCmd"
   _has_header = False  # flag to mark the presence of a Header object
   _full_text = """float64 x
@@ -18,11 +18,25 @@ float64 roll
 float64 pitch
 float64 yaw
 float64 gripper
+float64 quater_x
+float64 quater_y
+float64 quater_z
+float64 quater_w
+float64 chx
+float64 chy
+float64 chz
+float64 vel_l
+float64 vel_r
+float64 height
+float64 head_pit
+float64 head_yaw
+float64[6] tempFloatData
+int32[6] tempIntData
 int32 mode1
 int32 mode2
-"""
-  __slots__ = ['x','y','z','roll','pitch','yaw','gripper','mode1','mode2']
-  _slot_types = ['float64','float64','float64','float64','float64','float64','float64','int32','int32']
+int32 timeCount"""
+  __slots__ = ['x','y','z','roll','pitch','yaw','gripper','quater_x','quater_y','quater_z','quater_w','chx','chy','chz','vel_l','vel_r','height','head_pit','head_yaw','tempFloatData','tempIntData','mode1','mode2','timeCount']
+  _slot_types = ['float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64','float64[6]','int32[6]','int32','int32','int32']
 
   def __init__(self, *args, **kwds):
     """
@@ -32,7 +46,7 @@ int32 mode2
     changes.  You cannot mix in-order arguments and keyword arguments.
 
     The available fields are:
-       x,y,z,roll,pitch,yaw,gripper,mode1,mode2
+       x,y,z,roll,pitch,yaw,gripper,quater_x,quater_y,quater_z,quater_w,chx,chy,chz,vel_l,vel_r,height,head_pit,head_yaw,tempFloatData,tempIntData,mode1,mode2,timeCount
 
     :param args: complete set of field values, in .msg order
     :param kwds: use keyword arguments corresponding to message field names
@@ -55,10 +69,40 @@ int32 mode2
         self.yaw = 0.
       if self.gripper is None:
         self.gripper = 0.
+      if self.quater_x is None:
+        self.quater_x = 0.
+      if self.quater_y is None:
+        self.quater_y = 0.
+      if self.quater_z is None:
+        self.quater_z = 0.
+      if self.quater_w is None:
+        self.quater_w = 0.
+      if self.chx is None:
+        self.chx = 0.
+      if self.chy is None:
+        self.chy = 0.
+      if self.chz is None:
+        self.chz = 0.
+      if self.vel_l is None:
+        self.vel_l = 0.
+      if self.vel_r is None:
+        self.vel_r = 0.
+      if self.height is None:
+        self.height = 0.
+      if self.head_pit is None:
+        self.head_pit = 0.
+      if self.head_yaw is None:
+        self.head_yaw = 0.
+      if self.tempFloatData is None:
+        self.tempFloatData = [0.] * 6
+      if self.tempIntData is None:
+        self.tempIntData = [0] * 6
       if self.mode1 is None:
         self.mode1 = 0
       if self.mode2 is None:
         self.mode2 = 0
+      if self.timeCount is None:
+        self.timeCount = 0
     else:
       self.x = 0.
       self.y = 0.
@@ -67,8 +111,23 @@ int32 mode2
       self.pitch = 0.
       self.yaw = 0.
       self.gripper = 0.
+      self.quater_x = 0.
+      self.quater_y = 0.
+      self.quater_z = 0.
+      self.quater_w = 0.
+      self.chx = 0.
+      self.chy = 0.
+      self.chz = 0.
+      self.vel_l = 0.
+      self.vel_r = 0.
+      self.height = 0.
+      self.head_pit = 0.
+      self.head_yaw = 0.
+      self.tempFloatData = [0.] * 6
+      self.tempIntData = [0] * 6
       self.mode1 = 0
       self.mode2 = 0
+      self.timeCount = 0
 
   def _get_types(self):
     """
@@ -83,7 +142,11 @@ int32 mode2
     """
     try:
       _x = self
-      buff.write(_get_struct_7d2i().pack(_x.x, _x.y, _x.z, _x.roll, _x.pitch, _x.yaw, _x.gripper, _x.mode1, _x.mode2))
+      buff.write(_get_struct_19d().pack(_x.x, _x.y, _x.z, _x.roll, _x.pitch, _x.yaw, _x.gripper, _x.quater_x, _x.quater_y, _x.quater_z, _x.quater_w, _x.chx, _x.chy, _x.chz, _x.vel_l, _x.vel_r, _x.height, _x.head_pit, _x.head_yaw))
+      buff.write(_get_struct_6d().pack(*self.tempFloatData))
+      buff.write(_get_struct_6i().pack(*self.tempIntData))
+      _x = self
+      buff.write(_get_struct_3i().pack(_x.mode1, _x.mode2, _x.timeCount))
     except struct.error as se: self._check_types(struct.error("%s: '%s' when writing '%s'" % (type(se), str(se), str(locals().get('_x', self)))))
     except TypeError as te: self._check_types(ValueError("%s: '%s' when writing '%s'" % (type(te), str(te), str(locals().get('_x', self)))))
 
@@ -98,8 +161,18 @@ int32 mode2
       end = 0
       _x = self
       start = end
-      end += 64
-      (_x.x, _x.y, _x.z, _x.roll, _x.pitch, _x.yaw, _x.gripper, _x.mode1, _x.mode2,) = _get_struct_7d2i().unpack(str[start:end])
+      end += 152
+      (_x.x, _x.y, _x.z, _x.roll, _x.pitch, _x.yaw, _x.gripper, _x.quater_x, _x.quater_y, _x.quater_z, _x.quater_w, _x.chx, _x.chy, _x.chz, _x.vel_l, _x.vel_r, _x.height, _x.head_pit, _x.head_yaw,) = _get_struct_19d().unpack(str[start:end])
+      start = end
+      end += 48
+      self.tempFloatData = _get_struct_6d().unpack(str[start:end])
+      start = end
+      end += 24
+      self.tempIntData = _get_struct_6i().unpack(str[start:end])
+      _x = self
+      start = end
+      end += 12
+      (_x.mode1, _x.mode2, _x.timeCount,) = _get_struct_3i().unpack(str[start:end])
       return self
     except struct.error as e:
       raise genpy.DeserializationError(e)  # most likely buffer underfill
@@ -113,7 +186,11 @@ int32 mode2
     """
     try:
       _x = self
-      buff.write(_get_struct_7d2i().pack(_x.x, _x.y, _x.z, _x.roll, _x.pitch, _x.yaw, _x.gripper, _x.mode1, _x.mode2))
+      buff.write(_get_struct_19d().pack(_x.x, _x.y, _x.z, _x.roll, _x.pitch, _x.yaw, _x.gripper, _x.quater_x, _x.quater_y, _x.quater_z, _x.quater_w, _x.chx, _x.chy, _x.chz, _x.vel_l, _x.vel_r, _x.height, _x.head_pit, _x.head_yaw))
+      buff.write(self.tempFloatData.tostring())
+      buff.write(self.tempIntData.tostring())
+      _x = self
+      buff.write(_get_struct_3i().pack(_x.mode1, _x.mode2, _x.timeCount))
     except struct.error as se: self._check_types(struct.error("%s: '%s' when writing '%s'" % (type(se), str(se), str(locals().get('_x', self)))))
     except TypeError as te: self._check_types(ValueError("%s: '%s' when writing '%s'" % (type(te), str(te), str(locals().get('_x', self)))))
 
@@ -129,8 +206,18 @@ int32 mode2
       end = 0
       _x = self
       start = end
-      end += 64
-      (_x.x, _x.y, _x.z, _x.roll, _x.pitch, _x.yaw, _x.gripper, _x.mode1, _x.mode2,) = _get_struct_7d2i().unpack(str[start:end])
+      end += 152
+      (_x.x, _x.y, _x.z, _x.roll, _x.pitch, _x.yaw, _x.gripper, _x.quater_x, _x.quater_y, _x.quater_z, _x.quater_w, _x.chx, _x.chy, _x.chz, _x.vel_l, _x.vel_r, _x.height, _x.head_pit, _x.head_yaw,) = _get_struct_19d().unpack(str[start:end])
+      start = end
+      end += 48
+      self.tempFloatData = numpy.frombuffer(str[start:end], dtype=numpy.float64, count=6)
+      start = end
+      end += 24
+      self.tempIntData = numpy.frombuffer(str[start:end], dtype=numpy.int32, count=6)
+      _x = self
+      start = end
+      end += 12
+      (_x.mode1, _x.mode2, _x.timeCount,) = _get_struct_3i().unpack(str[start:end])
       return self
     except struct.error as e:
       raise genpy.DeserializationError(e)  # most likely buffer underfill
@@ -139,9 +226,27 @@ _struct_I = genpy.struct_I
 def _get_struct_I():
     global _struct_I
     return _struct_I
-_struct_7d2i = None
-def _get_struct_7d2i():
-    global _struct_7d2i
-    if _struct_7d2i is None:
-        _struct_7d2i = struct.Struct("<7d2i")
-    return _struct_7d2i
+_struct_19d = None
+def _get_struct_19d():
+    global _struct_19d
+    if _struct_19d is None:
+        _struct_19d = struct.Struct("<19d")
+    return _struct_19d
+_struct_3i = None
+def _get_struct_3i():
+    global _struct_3i
+    if _struct_3i is None:
+        _struct_3i = struct.Struct("<3i")
+    return _struct_3i
+_struct_6d = None
+def _get_struct_6d():
+    global _struct_6d
+    if _struct_6d is None:
+        _struct_6d = struct.Struct("<6d")
+    return _struct_6d
+_struct_6i = None
+def _get_struct_6i():
+    global _struct_6i
+    if _struct_6i is None:
+        _struct_6i = struct.Struct("<6i")
+    return _struct_6i

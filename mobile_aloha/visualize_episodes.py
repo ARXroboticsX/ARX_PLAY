@@ -26,7 +26,9 @@ STATE_NAMES = JOINT_NAMES + ["gripper"]
 
 POSE_NAMES = ["x", "y", "z", "roll", "pitch", "yaw", "gripper", ]
 BASE_STATE_NAMES = ["Dx", "Dy", "Dz", "height", "head_pitch", "head_yaw"]  # "base_chx", "base_chy", "base_chz"
+VELOCITY_NAMES = ["motor1", "motor2", "motor3", "motor4"]
 is_compressed = False
+
 
 def load_hdf5(dataset_name):
     global is_compressed
@@ -43,6 +45,7 @@ def load_hdf5(dataset_name):
         qvel = root['/observations/qvel'][()]
         eef = root['/observations/eef'][()]
         robot_base = root['/observations/robot_base'][()]
+        base_velocicity = root['/observations/base_velocity'][()]
 
         if 'effort' in root.keys():
             effort = root['/observations/effort'][()]
@@ -52,6 +55,7 @@ def load_hdf5(dataset_name):
         action = root['/action'][()]
         action_eef = root['/action_eef'][()]
         action_base = root['/action_base'][()]
+        action_velocity = root['/action_velocity'][()]
         image_dict = dict()
         for cam_name in root[f'/observations/images/'].keys():
             image_dict[cam_name] = root[f'/observations/images/{cam_name}'][()]
@@ -70,7 +74,8 @@ def load_hdf5(dataset_name):
                 image_list.append(image)
             image_dict[cam_name] = image_list
 
-    return eef, qpos, qvel, effort, action, action_eef, action_base, image_dict
+    return eef, qpos, qvel, effort, action, action_eef, action_base, action_velocity, image_dict
+
 
 def main(args):
     if sys.stdin.isatty():
@@ -82,11 +87,26 @@ def main(args):
     dataset_name = f'episode_{episode_idx}'
 
     if episode_idx == -1:
-        for idx in range(50, 58):
+        # 查找并排序所有符合的文件
+        hdf5_files = [
+            os.path.join(args['datasets'], f)
+            for f in os.listdir(args['datasets'])
+            if f.startswith("episode_") and f.endswith(".hdf5")
+        ]
+        hdf5_files.sort(key=lambda x: int(os.path.basename(x).split('_')[1].split('.')[0]))
+
+        total_files = len(hdf5_files)
+
+        # 过滤指定区间
+        start = args['start']
+        end = total_files if args['end'] == -1 else min(args['end'] + 1, total_files)
+
+        for idx in range(start, end):
             dataset_name = f'episode_{idx}'
             dataset_path = os.path.join(dataset_dir, dataset_name)
 
-            eef, qpos, qvel, effort, action, action_eef, action_base, image_dict = load_hdf5(dataset_path)
+            (eef, qpos, qvel, effort, action, action_eef,
+             action_base, action_velocity, image_dict) = load_hdf5(dataset_path)
 
             print(f"{dataset_path}.hdf5 loaded!")
 
@@ -95,8 +115,10 @@ def main(args):
             visualize_joints_vel(qvel, action, plot_path=os.path.join(dataset_dir, dataset_name + '_qvel.png'))
             visualize_gpos(eef, action_eef, plot_path=os.path.join(dataset_dir, dataset_name + '_gpos.png'))
             visualize_robot_base(action_base, plot_path=os.path.join(dataset_dir, dataset_name + '_action_base.png'))
+            visualize_base_velocity(action_velocity,
+                                    plot_path=os.path.join(dataset_dir, dataset_name + '_action_velocity.png'))
     else:
-        eef, qpos, qvel, effort, action, action_eef, action_base, image_dict = load_hdf5(
+        eef, qpos, qvel, effort, action, action_eef, action_base, action_velocity, image_dict = load_hdf5(
             os.path.join(dataset_dir, dataset_name))
 
         print('hdf5 loaded!!')
@@ -274,10 +296,36 @@ def visualize_robot_base(readings, plot_path=None):
     plt.close()
 
 
+def visualize_base_velocity(readings, plot_path=None):
+    readings = np.array(readings)  # ts, dim
+    num_ts, num_dim = readings.shape
+    num_figs = num_dim
+    fig, axs = plt.subplots(num_figs, 1, figsize=(8, 2 * num_dim))
+
+    # plot joint state
+    all_names = VELOCITY_NAMES
+    for dim_idx in range(num_dim):
+        ax = axs[dim_idx]
+        ax.plot(readings[:, dim_idx], label='raw')
+        ax.plot(np.convolve(readings[:, dim_idx], np.ones(20) / 20, mode='same'), label='smoothed_20')
+        ax.plot(np.convolve(readings[:, dim_idx], np.ones(10) / 10, mode='same'), label='smoothed_10')
+        ax.plot(np.convolve(readings[:, dim_idx], np.ones(5) / 5, mode='same'), label='smoothed_5')
+        ax.set_title(f'Joint {dim_idx}: {all_names[dim_idx]}')
+        ax.legend()
+
+    plt.tight_layout()
+    plt.savefig(plot_path)
+    print(f'Saved effort plot to: {plot_path}')
+    plt.close()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--datasets', type=str, help='dataset dir', required=True)
     parser.add_argument('--episode_idx', type=int, default=0, help='episode index')
+    parser.add_argument("--start", type=int, default=0, help="Start index in original file list")
+    parser.add_argument("--end", type=int, default=-1, help="End index (inclusive), -1 means all")
+    parser.add_argument("--individual_views", action='store_true', help="Plot each view individually")
 
     main(vars(parser.parse_args()))

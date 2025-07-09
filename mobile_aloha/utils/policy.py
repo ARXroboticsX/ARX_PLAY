@@ -21,8 +21,8 @@ class ACTPolicy(nn.Module):
 
         # print(f'KL Weight {self.kl_weight}')
 
-    def __call__(self, image, depth_image, left_states, right_states, robot_base=None, robot_head=None, actions=None,
-                 action_is_pad=None, command_embedding=None):
+    def __call__(self, image, depth_image, left_states, right_states, robot_base=None, robot_head=None,
+                 base_velocity=None, actions=None, action_is_pad=None, command_embedding=None):
 
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                          std=[0.229, 0.224, 0.225])  # 在大型数据集中计算得出的，例如ImageNet
@@ -36,7 +36,8 @@ class ACTPolicy(nn.Module):
         # 总共max个步 只取前model.chunk_size个
         if actions is not None:  # training time
             a_hat, (mu, logvar) = self.model(image, depth_image, left_states, right_states, robot_base=robot_base,
-                                             robot_head=robot_head, actions=actions, action_is_pad=action_is_pad)
+                                             robot_head=robot_head, base_velocity=base_velocity,
+                                             actions=actions, action_is_pad=action_is_pad)
 
             loss_dict = dict()
             if self.loss_function == 'l1':
@@ -59,7 +60,7 @@ class ACTPolicy(nn.Module):
             return loss_dict, a_hat
         else:  # inference time
             a_hat, image_feature = self.model(image, depth_image, left_states, right_states,
-                                              robot_base=robot_base, robot_head=robot_head,
+                                              robot_base=robot_base, robot_head=robot_head, base_velocity=base_velocity,
                                               command_embedding=None)
 
             return a_hat, image_feature

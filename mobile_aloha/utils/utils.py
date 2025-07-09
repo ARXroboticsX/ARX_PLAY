@@ -67,6 +67,7 @@ class EpisodicDataset(torch.utils.data.Dataset):
 
             if self.use_base:
                 actions = np.concatenate((actions, np.array(root['action_base'])), axis=1)
+                actions = np.concatenate((actions, np.array(root['action_velocity'])), axis=1)
 
             original_action_shape = actions.shape  # [:,:7]
             max_action_len = original_action_shape[0]  # max_episode
@@ -90,6 +91,7 @@ class EpisodicDataset(torch.utils.data.Dataset):
             effort = root['/observations/effort'][start_ts]
             robot_base = root['/observations/robot_base'][start_ts, :3]  # 9
             robot_head = root['/observations/robot_base'][start_ts, 3:6]  # 9
+            base_velocity = root['/observations/base_velocity'][start_ts]
 
             states_init = root['/observations/eef'][0]
 
@@ -192,11 +194,15 @@ class EpisodicDataset(torch.utils.data.Dataset):
         robot_head_data = torch.from_numpy(robot_head).float()
         robot_head_data = (robot_head_data - self.norm_stats["robot_head_mean"]) / self.norm_stats["robot_head_std"]
 
+        base_velocity_data = torch.from_numpy(base_velocity).float()
+        base_velocity_data = (base_velocity_data - self.norm_stats["base_velocity_mean"]) / self.norm_stats[
+            "base_velocity_std"]
+
         action_data = (action_data - self.norm_stats["action_mean"]) / self.norm_stats["action_std"]
         action_data = torch.tensor(action_data, dtype=torch.float)
 
         return (image_data, image_depth_data, left_states_data, right_states_data, robot_base_data, robot_head_data,
-                action_data, is_pad_action)
+                base_velocity_data, action_data, is_pad_action)
 
 
 def get_IO_for_norm(qpos, eef, qvel, effort, action, policy_config):
@@ -246,6 +252,7 @@ def get_norm_stats(dataset_dir, num_episodes, policy_config):
     all_action_data = []
     all_robot_head_data = []
     all_robot_base_data = []
+    all_robot_velocity_data = []
 
     for episode_idx in range(num_episodes):
         dataset_path = os.path.join(dataset_dir, f'episode_{episode_idx}.hdf5')
@@ -258,6 +265,7 @@ def get_norm_stats(dataset_dir, num_episodes, policy_config):
                     qvel = root['/observations/qvel'][()]
                     effort = root['/observations/effort'][()]
                     robot_base = root['/observations/robot_base'][()]
+                    base_velocity = root['/observations/base_velocity'][()]
                     action = root['/action'][()]
                 except KeyError as e:
                     print(f"Key error in file {dataset_path}: {e}")
@@ -266,6 +274,7 @@ def get_norm_stats(dataset_dir, num_episodes, policy_config):
 
                 if policy_config['use_base']:
                     action = np.concatenate((action, root['/action_base'][()]), axis=1)
+                    action = np.concatenate((action, root['/action_velocity'][()]), axis=1)
         except FileNotFoundError:
             print(f"File not found: {dataset_path}")
         except OSError as e:
@@ -278,6 +287,7 @@ def get_norm_stats(dataset_dir, num_episodes, policy_config):
         all_action_data.append(torch.from_numpy(action))
         all_robot_base_data.append(torch.from_numpy(robot_base[:, :3]))
         all_robot_head_data.append(torch.from_numpy(robot_base[:, 3:6]))
+        all_robot_velocity_data.append(torch.from_numpy(base_velocity))
 
     # 以最少的为准，多的就才减掉后面的
     episode_len_min = min(arr.shape[0] for arr in all_left_states_data)
@@ -308,10 +318,15 @@ def get_norm_stats(dataset_dir, num_episodes, policy_config):
             pad_action_head[:all_robot_head_data[idx].shape[0]] = all_robot_head_data[idx]
             all_robot_head_data[idx] = pad_action_head
 
+            pad_action_velocity = torch.zeros((target_demo_len, all_robot_velocity_data[idx].shape[1]))
+            pad_action_velocity[:all_robot_velocity_data[idx].shape[0]] = all_robot_velocity_data[idx]
+            all_robot_velocity_data[idx] = pad_action_velocity
+
     all_left_states_data = torch.stack(all_left_states_data)  # (50, 600, 14)
     all_right_states_data = torch.stack(all_right_states_data)  # (50, 600, 14)
     all_robot_base_data = torch.stack(all_robot_base_data)
     all_robot_head_data = torch.stack(all_robot_head_data)
+    all_robot_velocity_data = torch.stack(all_robot_velocity_data)
     all_action_data = torch.stack(all_action_data)  # (50, 600, 14)
 
     # normalize action data
@@ -328,11 +343,14 @@ def get_norm_stats(dataset_dir, num_episodes, policy_config):
 
     robot_base_mean = all_robot_base_data.mean(dim=[0, 1], keepdim=True)  # [1, 1, states_dim]
     robot_base_std = all_robot_base_data.std(dim=[0, 1], keepdim=True)  # [1, 1, states_dim]
+    base_velocity_mean = all_robot_velocity_data.mean(dim=[0, 1], keepdim=True)
+    base_velocity_std = all_robot_velocity_data.std(dim=[0, 1], keepdim=True)
 
     left_states_std = torch.clip(left_states_std, 1e-2, np.inf)  # clipping，
     right_states_std = torch.clip(right_states_std, 1e-2, np.inf)  # clipping，
     robot_head_std = torch.clip(robot_head_std, 1e-2, np.inf)  # clipping，
     robot_base_std = torch.clip(robot_base_std, 1e-2, np.inf)  # clipping，
+    base_velocity_std = torch.clip(base_velocity_std, 1e-2, np.inf)
 
     stats = {"action_mean": action_mean.numpy().squeeze(),
              "action_std": action_std.numpy().squeeze(),
@@ -344,6 +362,8 @@ def get_norm_stats(dataset_dir, num_episodes, policy_config):
              "robot_base_mean": robot_base_mean.numpy().squeeze(),
              "robot_head_std": robot_head_std.numpy().squeeze(),
              "robot_head_mean": robot_head_mean.numpy().squeeze(),
+             "base_velocity_std": base_velocity_std.numpy().squeeze(),
+             "base_velocity_mean": base_velocity_mean.numpy().squeeze(),
              }
 
     return stats

@@ -15,8 +15,7 @@ from cv_bridge import CvBridge
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Image, CompressedImage, Imu
-from tf.msg import tfMessage
-from tf.transformations import euler_from_quaternion
+from tf2_msgs.msg import TFMessage
 
 from msg._JointControl import JointControl
 from msg._JointInformation import JointInformation
@@ -37,6 +36,7 @@ class RosOperator:
         self.base_enable = False
         self.robot_base_pose_init = [0, 0, 0]  # rlative, the head_pitch and height and head yaw is the adsolutly
         self.robot_base_target = np.zeros((6,))
+        self.base_velocity_target = np.zeros((4,))
         self.base_control_thread = None
 
         self.ctrl_state = False
@@ -64,6 +64,7 @@ class RosOperator:
         self.follow_arm_right_eef_deque = deque()
         self.follow_arm_left_eef_deque = deque()
         self.robot_base_deque = deque()
+        self.base_velocity_deque = deque()
 
         self.master_arm_right_eef_deque = deque()
         self.master_arm_left_eef_deque = deque()
@@ -124,7 +125,12 @@ class RosOperator:
         if self.args.use_base:
             rospy.Subscriber(self.config['robot_base_config']['robot_base_topic'],
                              PosCmd, self.robot_base_callback, queue_size=2, tcp_nodelay=True)
-            rospy.Subscriber('/tf', tfMessage, self.base_pose_callback, queue_size=2, tcp_nodelay=True)
+
+            if self.args.record == 'Distance':
+                rospy.Subscriber('/tf', TFMessage, self.base_pose_callback, queue_size=2, tcp_nodelay=True)
+            if self.args.record == 'Speed':
+                rospy.Subscriber(self.config['robot_base_config']['robot_base_topic'],
+                                 PosCmd, self.base_velocity_callback, queue_size=2, tcp_nodelay=True)
 
         # 采集模式相关订阅
         if self.in_collect:
@@ -141,8 +147,8 @@ class RosOperator:
                 self.config['arm_config']['follow_arm_left_cmd_topic'], joint_topic_type, queue_size=10)
             self.follow_arm_right_publisher = rospy.Publisher(
                 self.config['arm_config']['follow_arm_right_cmd_topic'], joint_topic_type, queue_size=10)
-            self.base_robot_publisher = rospy.Publisher(
-                self.config['robot_base_config']['robot_base_topic'], PosCmd, queue_size=10)
+            self.base_robot_publisher = rospy.Publisher("/body_control", PosCmd, queue_size=10)
+
 
     # 推理
     def follow_arm_publish(self, left, right):
@@ -180,8 +186,13 @@ class RosOperator:
         self.robot_base_target[4] = target_base[4]  # head_pitch
         self.robot_base_target[5] = target_base[5]  # head_yaw
 
+        self.base_velocity_target[0] = target_base[6]  # motor1
+        self.base_velocity_target[1] = target_base[7]  # motor2
+        self.base_velocity_target[2] = target_base[8]  # motor3
+        self.base_velocity_target[3] = target_base[9]  # motor4
+
     def start_base_control_thread(self):
-        if self.args.base:
+        if self.args.use_base:
             self.init_robot_base_pose()
             self.base_enable = True
             self.base_control_thread = threading.Thread(target=self.robot_base_control_thread,
@@ -237,62 +248,76 @@ class RosOperator:
         control = PosCmd()
         max_velocity = 1.0
 
-        pid_controllers = {
-            'x': PIDController(kp=10.0, ki=0.0, kd=0.0, max_i=1.0, max_output=max_velocity),
-            'y': PIDController(kp=10.0, ki=0.0, kd=0.0, max_i=1.0, max_output=max_velocity),
-            'z': PIDController(kp=1.0, ki=0.0, kd=0.0, max_i=1.0, max_output=max_velocity)
-        }
+        if self.args.record == 'Distance':
+            pid_controllers = {
+                'x': PIDController(kp=10.0, ki=0.0, kd=0.0, max_i=1.0, max_output=max_velocity),
+                'y': PIDController(kp=10.0, ki=0.0, kd=0.0, max_i=1.0, max_output=max_velocity),
+                'z': PIDController(kp=1.0, ki=0.0, kd=0.0, max_i=1.0, max_output=max_velocity)
+            }
 
-        recorded_base_poses = []
-        recorded_target_poses = []
-        recorded_control_outputs = []
-        timeout = 0
+            recorded_base_poses = []
+            recorded_target_poses = []
+            recorded_control_outputs = []
+            timeout = 0
 
-        while (not rospy.is_shutdown()) and self.base_enable:
-            if len(self.base_pose_deque) == 0:
-                print('\033[33mThere is no base_pose_deque\033[0m')
+            while (not rospy.is_shutdown()) and self.base_enable:
+                if len(self.base_pose_deque) == 0:
+                    print('\033[33mThere is no base_pose_deque\033[0m')
 
-                timeout += 1
-                if timeout > 100:
-                    self.base_enable = False
-                    break
+                    timeout += 1
+                    if timeout > 100:
+                        self.base_enable = False
+                        break
+                    rate.sleep()
+
+                    continue
+
+                base_pose = self.base_pose_deque.pop()
+                current_x, current_y, current_Wz = base_pose
+                target_x, target_y, target_Wz, target_height, target_pitch, target_yaw = self.robot_base_target
+
+                # 更新控制命令
+                control.chx = pid_controllers['x'].update(current_x, target_x, dt=0.017)
+                control.chy = pid_controllers['y'].update(current_y, target_y, dt=0.017)
+                control.chz = pid_controllers['z'].update(current_Wz, target_Wz, dt=0.017)
+                control.height = target_height
+                control.head_pit = target_pitch
+                control.head_yaw = target_yaw
+                control.mode1 = 1
+
+                # 记录数据
+                # target_pose = [target_x, target_y, current_Wz]
+                output_control = [control.chx, control.chy, control.chz]
+
+                # recorded_base_poses.append(base_pose)
+                # recorded_target_poses.append(target_pose)
+                recorded_control_outputs.append(output_control)
+
+                self.base_robot_publisher.publish(control)
                 rate.sleep()
 
-                continue
+            if not self.base_enable:
+                self.robot_base_shutdown()
 
-            base_pose = self.base_pose_deque.pop()
-            current_x, current_y, current_Wz = base_pose
-            target_x, target_y, target_Wz, target_height, target_pitch, target_yaw = self.robot_base_target
+                plot_path = (
+                    os.path.join(self.args.ckpt_dir, f"{self.args.ckpt_name}_PID.png")
+                    if self.args.episode_path == "./datasets"
+                    else os.path.join(f"{self.args.episode_path}_PID.png")
+                )
+                self.visualize_pid_base(recorded_base_poses, recorded_target_poses, plot_path=plot_path)
+        if self.args.record == 'Speed':
+            while (not rospy.is_shutdown()) and self.base_enable:
+                _, _, _, target_height, target_pitch, target_yaw = self.robot_base_target
+                target_motor1, target_motor2, target_motor3, target_motor4 = self.base_velocity_target
 
-            # 更新控制命令
-            control.chx = pid_controllers['x'].update(current_x, target_x, dt=0.017)
-            control.chy = pid_controllers['y'].update(current_y, target_y, dt=0.017)
-            control.chz = pid_controllers['z'].update(current_Wz, target_Wz, dt=0.017)
-            control.height = target_height
-            control.head_pit = target_pitch
-            control.head_yaw = target_yaw
-            control.mode1 = 1
+                control.height = target_height
+                control.head_pit = target_pitch
+                control.head_yaw = target_yaw
+                control.tempFloatData[1:5] = [target_motor1, target_motor2, target_motor3, target_motor4]
+                control.mode1 = 3
 
-            # 记录数据
-            target_pose = [target_x, target_y, current_Wz]
-            output_control = [control.chx, control.chy, control.chz]
-
-            recorded_base_poses.append(base_pose)
-            recorded_target_poses.append(target_pose)
-            recorded_control_outputs.append(output_control)
-
-            self.base_robot_publisher.publish(control)
-            rate.sleep()
-
-        if not self.base_enable:
-            self.robot_base_shutdown()
-
-            plot_path = (
-                os.path.join(self.args.ckpt_dir, f"{self.args.ckpt_name}_PID.png")
-                if self.args.episode_path == "./datasets"
-                else os.path.join(f"{self.args.episode_path}_PID.png")
-            )
-            self.visualize_pid_base(recorded_base_poses, recorded_target_poses, plot_path=plot_path)
+                self.base_robot_publisher.publish(control)
+                rate.sleep()
 
         return
 
@@ -465,17 +490,34 @@ class RosOperator:
 
                 return None
 
-            if len(self.base_pose_deque) == 0:
-                print(r'there is no base_pose_deque')
+            if self.args.record == 'Distance':
+                if len(self.base_pose_deque) == 0:
+                    print(r'there is no base_pose_deque')
 
-                return None
+                    return None
+            if self.args.record == 'Speed':
+                if len(self.base_velocity_deque) == 0:
+                    print(r'there is no base_velocity_deque')
+
+                    return None
 
             robot_base = self.robot_base_deque.pop()
-            base_pose = self.base_pose_deque.pop()
-            obs_dict['robot_base'] = [base_pose[0], base_pose[1], base_pose[2], robot_base.height,
-                                      robot_base.head_pit, robot_base.head_yaw]
+
+            if self.args.record == 'Distance':
+                base_pose = self.base_pose_deque.pop()
+                obs_dict['robot_base'] = [base_pose[0], base_pose[1], base_pose[2], robot_base.height,
+                                          robot_base.head_pit, robot_base.head_yaw]
+
+                obs_dict['base_velocity'] = np.zeros((4,))
+            if self.args.record == 'Speed':
+                obs_dict['robot_base'] = [0, 0, 0,
+                                          robot_base.height, robot_base.head_pit, robot_base.head_yaw]
+
+                base_velocity = self.base_velocity_deque.pop()
+                obs_dict['base_velocity'] = [base_velocity[0], base_velocity[1], base_velocity[2], base_velocity[3]]
         else:
             obs_dict['robot_base'] = np.zeros((6,))
+            obs_dict['base_velocity'] = np.zeros((4,))
 
         return obs_dict
 
@@ -613,6 +655,14 @@ class RosOperator:
         base_pose[2] = base_pose[2] - self.robot_base_pose_init[2]
 
         self.base_pose_deque.append(base_pose)
+
+    def base_velocity_callback(self, msg):
+        if len(self.base_velocity_deque) >= 2:
+            self.base_velocity_deque.popleft()
+
+        velocity = msg.tempFloatData[1:5]
+
+        self.base_velocity_deque.append(velocity)
 
     def _update_arm_position(self, target, arm, symbol, steps_length):
         diff = [abs(target[i] - arm[i]) for i in range(len(target))]

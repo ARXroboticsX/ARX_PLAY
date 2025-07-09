@@ -40,7 +40,5 @@ arm_config:
   master_VR_left_eef_topic: '/ARX_VR_L'
   master_VR_right_eef_topic: '/ARX_VR_R'
 
-
 robot_base_config:
-  robot_base_topic: '/ARX_VR_L'
-#  robot_base_topic: '/chassis_back'
+  robot_base_topic: '/body_information'

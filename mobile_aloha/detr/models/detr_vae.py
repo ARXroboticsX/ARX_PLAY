@@ -26,9 +26,11 @@ e = IPython.embed
 
 from utils.utils import get_gpu_mem_info
 
+
 def print_gpu_mem():
     gpu_mem_total, gpu_mem_used, gpu_mem_free = get_gpu_mem_info()
-    return (gpu_mem_used/gpu_mem_total)*100
+    return (gpu_mem_used / gpu_mem_total) * 100
+
 
 def reparametrize(mu, logvar):
     std = logvar.div(2).exp()
@@ -65,30 +67,32 @@ class DETRVAE(nn.Module):
         self.chunk_size = policy_config.chunk_size
         self.camera_names = policy_config.camera_names
         self.states_dim = int(policy_config.states_dim)
-        
-        self.action_dim = policy_config.action_dim #  冗余输出
+
+        self.action_dim = policy_config.action_dim  # 冗余输出
         # print(f'{self.action_dim=}')
-        
+
         self.kl_weight = policy_config.kl_weight
         self.use_base = policy_config.use_base
-            
+
         self.transformer = transformer
         self.encoder = encoder
         self.hidden_dim = transformer.d_model
         self.action_head = nn.Linear(self.hidden_dim, self.action_dim)
         self.query_embed = nn.Embedding(self.chunk_size, self.hidden_dim)
-        
+
         # input_dim = 14 + 7 # robot_state + env_state
         self.input_proj_left_state = nn.Linear(self.states_dim, self.hidden_dim)
         self.input_proj_right_state = nn.Linear(self.states_dim, self.hidden_dim)
         self.input_proj_robot_base = nn.Linear(3, self.hidden_dim)
         self.input_proj_robot_head = nn.Linear(3, self.hidden_dim)
-        
+        self.input_proj_base_velocity = nn.Linear(4, self.hidden_dim)
+
         if backbones is not None:
             # print("backbones[0]", backbones[0])
             if depth_backbones is not None:
                 self.depth_backbones = nn.ModuleList(depth_backbones)
-                self.input_proj = nn.Conv2d(backbones[0].num_channels + depth_backbones[0].num_channels, self.hidden_dim,
+                self.input_proj = nn.Conv2d(backbones[0].num_channels + depth_backbones[0].num_channels,
+                                            self.hidden_dim,
                                             kernel_size=1)
             else:
                 self.depth_backbones = None
@@ -106,9 +110,9 @@ class DETRVAE(nn.Module):
         # decoder extra parameters
         self.latent_out_proj = nn.Linear(self.latent_dim, self.hidden_dim)  # project latent sample to embedding
         self.latent_pos = nn.Embedding(1, self.hidden_dim)
-        
+
         pos_embed_dim = 1
-        pos_embed_dim = pos_embed_dim + 2 if self.use_base else pos_embed_dim
+        pos_embed_dim = pos_embed_dim + 3 if self.use_base else pos_embed_dim
 
         self.robot_state_pos = nn.Embedding(pos_embed_dim, self.hidden_dim)
 
@@ -117,45 +121,55 @@ class DETRVAE(nn.Module):
         self.encoder_right_states_proj = nn.Linear(self.states_dim, self.hidden_dim)  # project qpos to embedding
         self.encoder_robot_base_proj = nn.Linear(3, self.hidden_dim)  # project qpos to embedding
         self.encoder_robot_head_proj = nn.Linear(3, self.hidden_dim)  # project qpos to embedding
-        
+        self.encoder_base_velocity_proj = nn.Linear(4, self.hidden_dim)
+
         self.latent_proj = nn.Linear(self.hidden_dim, self.latent_dim * 2)  # project hidden state to latent std, var
 
-        self.encoder_addition_block_dim = 2 # cls + joints
-        self.encoder_addition_block_dim = self.encoder_addition_block_dim + 2 if self.use_base else self.encoder_addition_block_dim
+        self.encoder_addition_block_dim = 2  # cls + joints
+        self.encoder_addition_block_dim = self.encoder_addition_block_dim + 3 if self.use_base else self.encoder_addition_block_dim
 
-        self.register_buffer('pos_table', get_sinusoid_encoding_table(self.encoder_addition_block_dim + self.chunk_size, self.hidden_dim)) # cls
+        self.register_buffer('pos_table', get_sinusoid_encoding_table(self.encoder_addition_block_dim + self.chunk_size,
+                                                                      self.hidden_dim))  # cls
 
-    def encode_process(self, left_states, right_states, robot_base=None, robot_head=None, actions=None, action_is_pad=None):
-        
+    def encode_process(self, left_states, right_states, robot_base=None, robot_head=None, base_velocity=None,
+                       actions=None, action_is_pad=None):
         bs = left_states.shape[0]
         is_training = actions is not None  # train or val
-        
+
         # 將states拆分成两部分输入
         # print("\n图像编码器 start1 :", print_gpu_mem())
-            
+
         if is_training:  # self.hidden_dim输入参数是512
             action_embed = self.encoder_action_proj(actions)  # (bs, seq, self.hidden_dim)
-            
+
             left_states_embed = self.encoder_left_states_proj(left_states)  # (bs, self.hidden_dim)
             left_states_embed = torch.unsqueeze(left_states_embed, dim=1)
-            
+
             cls_embed = self.cls_embed.weight  # (1, self.hidden_dim)
             cls_embed = torch.unsqueeze(cls_embed, dim=0).repeat(bs, 1, 1)  # (bs, 1, self.hidden_dim)
-            
+
             if self.use_base:
                 robot_base_embed = self.encoder_robot_base_proj(robot_base)  # (bs, self.hidden_dim)
                 robot_base_embed = torch.unsqueeze(robot_base_embed, dim=1)
-                
+
                 robot_head_embed = self.encoder_robot_head_proj(robot_head)  # (bs, self.hidden_dim)
                 robot_head_embed = torch.unsqueeze(robot_head_embed, dim=1)
 
+                base_velocity_embed = self.encoder_base_velocity_proj(base_velocity)  # (bs, self.hidden_dim)
+                base_velocity_embed = torch.unsqueeze(base_velocity_embed, dim=1)
+
             if self.use_base:
-                encoder_input = torch.cat([cls_embed, left_states_embed, robot_base_embed, robot_head_embed, action_embed], dim=1)  # (bs, seq+1, self.hidden_dim)
+                encoder_input = torch.cat(
+                    [cls_embed, left_states_embed, robot_base_embed, robot_head_embed, base_velocity_embed,
+                     action_embed],
+                    dim=1)  # (bs, seq+1, self.hidden_dim)
             else:
-                encoder_input = torch.cat([cls_embed, left_states_embed, action_embed], dim=1)  # (bs, seq+1, self.hidden_dim)
-                
+                encoder_input = torch.cat([cls_embed, left_states_embed, action_embed],
+                                          dim=1)  # (bs, seq+1, self.hidden_dim)
+
             encoder_input = encoder_input.permute(1, 0, 2)  # (seq+1, bs, self.hidden_dim)
-            cls_joint_is_pad = torch.zeros((bs, self.encoder_addition_block_dim), dtype=torch.bool) # cls+left_states + right_states=(8, 3)
+            cls_joint_is_pad = torch.zeros((bs, self.encoder_addition_block_dim),
+                                           dtype=torch.bool)  # cls+left_states + right_states=(8, 3)
             cls_joint_is_pad = cls_joint_is_pad.to(left_states.device)
 
             is_pad = torch.cat([cls_joint_is_pad, action_is_pad], dim=1)  # (bs, seq+1)
@@ -177,21 +191,18 @@ class DETRVAE(nn.Module):
             mu = logvar = None
             latent_sample = torch.zeros([bs, self.latent_dim], dtype=torch.float32).to(left_states.device)
             latent_input = self.latent_out_proj(latent_sample)
-            
-        return latent_input, mu, logvar
-    
-    
-    def forward(self, image, depth_image, left_states, right_states, robot_base=None, robot_head=None,actions=None, action_is_pad=None, command_embedding=None):
 
-        latent_input, mu, logvar = self.encode_process(left_states, right_states, robot_base=robot_base, robot_head=robot_head, actions=actions, action_is_pad=action_is_pad)
-        
+        return latent_input, mu, logvar
+
+    def forward(self, image, depth_image, left_states, right_states, robot_base=None, robot_head=None,
+                base_velocity=None, actions=None, action_is_pad=None, command_embedding=None):
+        latent_input, mu, logvar = self.encode_process(left_states, right_states,
+                                                       robot_base=robot_base, robot_head=robot_head,
+                                                       base_velocity=base_velocity,
+                                                       actions=actions, action_is_pad=action_is_pad)
+
         # print("forward: ", qpos.shape, image.shape, env_state, actions.shape, action_is_pad.shape)
-        if command_embedding is not None:
-            if self.use_language:
-                command_embedding_proj = self.lang_embed_proj(command_embedding)
-            else:
-                raise NotImplementedError
-            
+
         is_training = actions is not None  # train or val
 
         # Image observation features and position embeddings
@@ -216,27 +227,31 @@ class DETRVAE(nn.Module):
         # fold camera dimension into width dimension
         img_src = torch.cat(all_cam_features, dim=3)
         img_src_pos = torch.cat(all_cam_pos, dim=3)
-        
+
         latent_input = torch.unsqueeze(latent_input, dim=0)
-        
+
         if self.use_base:
             robot_base_input = self.input_proj_robot_base(robot_base)
             robot_base_input = torch.unsqueeze(robot_base_input, dim=0)
-            
+
             robot_head_input = self.input_proj_robot_head(robot_head)
             robot_head_input = torch.unsqueeze(robot_head_input, dim=0)
+
+            robot_velocity_input = self.input_proj_base_velocity(base_velocity)
+            robot_velocity_input = torch.unsqueeze(robot_velocity_input, dim=0)
         else:
             robot_base_input = None
             robot_head_input = None
+            robot_velocity_input = None
 
         right_states_input = None
-            
-        hs = self.transformer(self.query_embed.weight,
-                            img_src, img_src_pos, None,
-                            left_states_input, right_states_input, robot_base_input, robot_head_input, self.robot_state_pos.weight,
-                            latent_input, self.latent_pos.weight)[0]
 
-               
+        hs = self.transformer(self.query_embed.weight,
+                              img_src, img_src_pos, None,
+                              left_states_input, right_states_input,
+                              robot_base_input, robot_head_input, robot_velocity_input,
+                              self.robot_state_pos.weight, latent_input, self.latent_pos.weight)[0]
+
         a_hat = self.action_head(hs)
 
         return a_hat, [mu, logvar]
@@ -303,7 +318,7 @@ class CNNMLP(nn.Module):
         for cam_feature in all_cam_features:
             flattened_features.append(cam_feature.reshape([bs, -1]))
         flattened_features = torch.cat(flattened_features, axis=1)  # 768 each
-        features = torch.cat([flattened_features, robot_state], axis=1) # qpos: 14
+        features = torch.cat([flattened_features, robot_state], axis=1)  # qpos: 14
         a_hat = self.mlp(features)
         # print(f')****************a_hat.shape={a_hat.shape=}')
         return a_hat
@@ -367,7 +382,7 @@ class Diffusion(nn.Module):
             })
 
         nets = nets.float().cuda()
-        ENABLE_EMA = False # True
+        ENABLE_EMA = False  # True
         if ENABLE_EMA:
             ema = EMAModel(model=nets, power=self.ema_power)
         else:

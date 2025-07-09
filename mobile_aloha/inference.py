@@ -100,7 +100,7 @@ def get_model_config(args):
 
         # 更新 action_dim
         policy_config['action_dim'] *= 2  # 双臂预测
-        policy_config['action_dim'] += 6 if args.use_base else 0
+        policy_config['action_dim'] += 10 if args.use_base else 0
         policy_config['action_dim'] *= 2  # 增加预测量
         print("policy_config['action_dim']=", policy_config['action_dim'],
               "policy_config['states_dim']=", policy_config['states_dim'])
@@ -197,7 +197,7 @@ def robot_action(ros_operator, args, action):
     ros_operator.follow_arm_publish(left_action, right_action)
 
     if args.use_base:
-        action_base = action[gripper_idx[1] + 1:gripper_idx[1] + 1 + 6]
+        action_base = action[gripper_idx[1] + 1:gripper_idx[1] + 1 + 10]
         ros_operator.set_robot_base_target(action_base)
 
 
@@ -224,9 +224,10 @@ def model_inference(args, config, ros_operator, policy):
                                                      stats['left_states_std'])
     pre_right_states_process = lambda s_right_states: ((s_right_states - stats['right_states_mean']) /
                                                        stats['right_states_std'])
-    pre_process_action_history = lambda s_action: (s_action - stats['action_mean']) / stats['action_std']
     pre_robot_base_process = lambda s_robot_base: (s_robot_base - stats['robot_base_mean']) / stats['robot_base_std']
     pre_robot_head_process = lambda s_robot_head: (s_robot_head - stats['robot_head_mean']) / stats['robot_head_std']
+    pre_base_velocity_process = lambda s_base_velocity: (s_base_velocity - stats['base_velocity_mean']) / stats[
+        'base_velocity_std']
     post_process = lambda a: a * stats['action_std'] + stats['action_mean']  # 正确对应的
 
     left_states_init = [0, 0, 0, 0, 0, 0, 0]
@@ -266,13 +267,16 @@ def model_inference(args, config, ros_operator, policy):
                 right_states = left_states
 
                 robot_base = obs_dict['robot_base'][:3]
-
                 robot_base = pre_robot_base_process(robot_base)
                 robot_base = torch.from_numpy(robot_base).float().cuda().unsqueeze(0)
 
                 robot_head = obs_dict['robot_base'][3:6]
                 robot_head = pre_robot_head_process(robot_head)
                 robot_head = torch.from_numpy(robot_head).float().cuda().unsqueeze(0)
+
+                base_velocity = obs_dict['base_velocity']
+                base_velocity = pre_base_velocity_process(base_velocity)
+                base_velocity = torch.from_numpy(base_velocity).float().cuda().unsqueeze(0)
 
                 left_states = pre_left_states_process(left_states)
                 left_states = torch.from_numpy(left_states).float().cuda().unsqueeze(0)
@@ -287,7 +291,9 @@ def model_inference(args, config, ros_operator, policy):
                     curr_depth_image = get_depth_image(obs_dict, config['camera_names'])
 
                 if config['policy_class'] == "ACT":
-                    all_actions, image_feature = policy(curr_image, curr_depth_image, left_states, right_states)
+                    all_actions, image_feature = policy(curr_image, curr_depth_image, left_states, right_states,
+                                                        robot_base=robot_base, robot_head=robot_head,
+                                                        base_velocity=base_velocity,)
                     if config['temporal_agg']:
                         all_time_actions[[timestep], timestep:timestep + chunk_size] = all_actions.cpu().numpy()
 
@@ -348,7 +354,7 @@ def init_robot(ros_operator, use_base):
 
     ros_operator.follow_arm_publish_continuous(init1, init1)
     if use_base:
-        ros_operator.start_chassis_control_thread()
+        ros_operator.start_base_control_thread()
 
 
 def signal_handler(signal, frame, ros_operator):
@@ -411,6 +417,8 @@ def parse_args(known=False):
 
     # 机器人设置
     parser.add_argument('--use_base', action='store_true', help='use robot base')
+    parser.add_argument('--record', choices=['Distance', 'Speed'], default='Distance',
+                        help='record data')
     parser.add_argument('--frame_rate', type=int, default=60, help='frame rate')
 
     # ACT模型专用设置

@@ -82,7 +82,7 @@ def initialize_policy_config(args, commands):
 
         # 更新 action_dim
         act_config['action_dim'] *= 2  # 双臂预测
-        act_config['action_dim'] += 6 if args.use_base else 0
+        act_config['action_dim'] += 10 if args.use_base else 0
         act_config['action_dim'] *= 2  # 增加预测量
 
         return {**base_config, **act_config}
@@ -261,21 +261,21 @@ def train_epoch(dataloader, policy, optimizer, policy_config):
 
 
 def forward_pass(policy_config, data, policy):
-    (image_data, image_depth_data, left_states_data, right_states_data, robot_base_data, robot_head_data,
-     action_data, is_pad_action) = data
+    (image_data, image_depth_data, left_states_data, right_states_data,
+     robot_base_data, robot_head_data, base_velocity_data, action_data, is_pad_action) = data
 
-    device_data = [image_data, left_states_data, right_states_data, robot_base_data, robot_head_data,
-                   action_data, is_pad_action]
+    device_data = [image_data, image_depth_data, left_states_data, right_states_data,
+                   robot_base_data, robot_head_data, base_velocity_data, action_data, is_pad_action]
     device_data = [d.cuda() for d in device_data]
 
-    (image_data, left_states_data, right_states_data, robot_base_data, robot_head_data,
-     action_data, is_pad_action) = device_data
+    (image_data, image_depth_data, left_states_data, right_states_data,
+     robot_base_data, robot_head_data, base_velocity_data, action_data, is_pad_action) = device_data
 
     image_depth_data = image_depth_data.cuda() if policy_config['use_depth_image'] else None
 
     if policy_config['policy_class'] == 'ACT':
-        return policy(image_data, image_depth_data, left_states_data, right_states_data, robot_base_data,
-                      robot_head_data, action_data, is_pad_action)
+        return policy(image_data, image_depth_data, left_states_data, right_states_data,
+                      robot_base_data, robot_head_data, base_velocity_data, action_data, is_pad_action)
     else:
         return policy(image_data, image_depth_data, left_states_data, action_data, is_pad_action)
 

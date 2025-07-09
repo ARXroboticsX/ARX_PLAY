@@ -143,6 +143,7 @@ def collect_information(args, ros_operator, voice_engine):
     actions = []
     actions_eef = []
     action_bases = []
+    action_velocities = []
     count = 0
     rate = rospy.Rate(args.frame_rate)
 
@@ -167,6 +168,7 @@ def collect_information(args, ros_operator, voice_engine):
         action = deepcopy(obs_dict['qpos'])
         action_eef = deepcopy(obs_dict['eef'])
         action_base = obs_dict['robot_base']
+        action_velocity = obs_dict['base_velocity']
 
         # 夹爪动作处理
         for idx in gripper_idx:
@@ -186,6 +188,7 @@ def collect_information(args, ros_operator, voice_engine):
         actions.append(action)
         actions_eef.append(action_eef)
         action_bases.append(action_base)
+        action_velocities.append(action_velocity)
 
         count += 1
         print(f"Frame data: {count}")
@@ -198,11 +201,11 @@ def collect_information(args, ros_operator, voice_engine):
     print(f"\nlen(timesteps): {len(timesteps)}")
     print(f"len(actions)  : {len(actions)}")
 
-    return timesteps, actions, actions_eef, action_bases
+    return timesteps, actions, actions_eef, action_bases, action_velocities
 
 
 # 保存数据函数
-def save_data(args, timesteps, actions, actions_eef, action_bases, dataset_path):
+def save_data(args, timesteps, actions, actions_eef, action_bases, action_velocities, ros_operator, dataset_path):
     data_size = len(actions)
 
     # 数据字典
@@ -215,6 +218,7 @@ def save_data(args, timesteps, actions, actions_eef, action_bases, dataset_path)
         '/action': [],
         '/action_eef': [],
         '/action_base': [],
+        '/action_velocity': [],
     }
 
     # 初始化相机字典
@@ -228,6 +232,7 @@ def save_data(args, timesteps, actions, actions_eef, action_bases, dataset_path)
         action = actions.pop(0)  # 动作  当前动作
         action_eef = actions_eef.pop(0)
         action_base = action_bases.pop(0)
+        action_velocity = action_velocities.pop(0)
         ts = timesteps.pop(0)  # 奖励  前一帧
 
         # 填充数据
@@ -239,6 +244,7 @@ def save_data(args, timesteps, actions, actions_eef, action_bases, dataset_path)
         data_dict['/action'].append(action)
         data_dict['/action_eef'].append(action_eef)
         data_dict['/action_base'].append(action_base)
+        data_dict['/action_velocity'].append(action_velocity)
 
         # 相机数据
         for cam_name in args.camera_names:
@@ -351,14 +357,16 @@ def save_data(args, timesteps, actions, actions_eef, action_bases, dataset_path)
             'eef': eef_dim,
             'qvel': states_dim,
             'effort': states_dim,
-            'robot_base': 6
+            'robot_base': 6,
+            'base_velocity': 4
         }
 
         # 动作数据集
         action_datasets = {
             'action': states_dim,
             'action_eef': eef_dim,
-            'action_base': 6
+            'action_base': 6,
+            'action_velocity': 4
         }
 
         # 创建obs_dict数据集
@@ -404,15 +412,15 @@ def main(args):
         collect_detect(current_episode, voice_engine, ros_operator)
 
         print(f"Start to record episode {current_episode}")
-        timesteps, actions, actions_eef, action_bases = collect_information(args, ros_operator,
-                                                                            voice_engine)  # ros_operator.process()
+        timesteps, actions, actions_eef, action_bases, action_velocities = collect_information(args, ros_operator,
+                                                                                               voice_engine)
 
         if not os.path.exists(datasets_dir):
             os.makedirs(datasets_dir)
 
         dataset_path = os.path.join(datasets_dir, "episode_" + str(current_episode))
-        threading.Thread(target=save_data, args=(args, timesteps, actions, actions_eef, action_bases, dataset_path,)
-                         ).start()  # 执行指令单独的线程,，可以边说话边执行，多线程操作
+        threading.Thread(target=save_data, args=(args, timesteps, actions, actions_eef, action_bases, action_velocities,
+                                                 ros_operator, dataset_path,)).start()
         # voice_process(voice_engine, f"save done")
         episode_num = episode_num + 1
         current_episode = current_episode + 1
@@ -442,6 +450,8 @@ def parse_arguments(known=False):
 
     # 机器人选项
     parser.add_argument('--use_base', action='store_true', help='use robot base')
+    parser.add_argument('--record', choices=['Distance', 'Speed'], default='Distance',
+                        help='record data')
 
     # 数据采集选项
     parser.add_argument('--key_collect', action='store_true', help='use key collect')

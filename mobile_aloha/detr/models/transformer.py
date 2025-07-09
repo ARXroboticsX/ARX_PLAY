@@ -57,8 +57,8 @@ class Transformer(nn.Module):
 
     def forward(self, query_embed,
                 img_src, img_pos, is_pad,
-                left_states_input, right_states_input, robot_base_input, robot_head_input, robot_state_pos=None,
-                latent_input=None, latent_pos=None):
+                left_states_input, right_states_input, robot_base_input, robot_head_input, robot_velocity_input,
+                robot_state_pos=None, latent_input=None, latent_pos=None):
         # TODO flatten only when input has H and W
         if len(img_src.shape) == 4:  # has H and W
             # flatten NxCxHxW to HWxNxC
@@ -67,38 +67,45 @@ class Transformer(nn.Module):
             img_src_is_pad = torch.zeros((img_src.shape[1], img_src.shape[0]), dtype=torch.bool, device=img_src.device)
             latent_is_pad = torch.zeros((latent_input.shape[1], latent_input.shape[0]), dtype=torch.bool,
                                         device=img_src.device)
-            
+
             left_state_is_pad = torch.zeros((left_states_input.shape[1], left_states_input.shape[0]), dtype=torch.bool,
-                                             device=img_src.device)
-            
+                                            device=img_src.device)
+
             img_pos = img_pos.flatten(2).permute(2, 0, 1).repeat(1, bs, 1)
             query_embed = query_embed.unsqueeze(1).repeat(1, bs, 1)
             # mask = mask.flatten(1)
             robot_state_pos = robot_state_pos.unsqueeze(1).repeat(1, bs, 1)  # seq, bs, dim
             latent_pos = latent_pos.unsqueeze(1).repeat(1, bs, 1)  # seq, bs, dim
-            
+
             robot_state_src = left_states_input
             robot_state_is_pad = left_state_is_pad
-            
+
             if right_states_input != None:
-                right_state_is_pad = torch.zeros((right_states_input.shape[1], right_states_input.shape[0]), dtype=torch.bool,
-                                                device=img_src.device)
+                right_state_is_pad = torch.zeros((right_states_input.shape[1], right_states_input.shape[0]),
+                                                 dtype=torch.bool,
+                                                 device=img_src.device)
                 robot_state_src = torch.cat([robot_state_src, right_states_input], dim=0)
-                robot_state_is_pad = torch.cat([robot_state_is_pad, right_state_is_pad], dim=1) #######
-                
+                robot_state_is_pad = torch.cat([robot_state_is_pad, right_state_is_pad], dim=1)  #######
+
             if robot_base_input != None:
-                robot_base_is_pad = torch.zeros((robot_base_input.shape[1], robot_base_input.shape[0]), dtype=torch.bool, device=img_src.device)
-                robot_head_is_pad = torch.zeros((robot_head_input.shape[1], robot_head_input.shape[0]), dtype=torch.bool, device=img_src.device)
-                
-                robot_state_src = torch.cat([robot_state_src, robot_base_input, robot_head_input], dim=0)
-                robot_state_is_pad = torch.cat([robot_state_is_pad, robot_base_is_pad, robot_head_is_pad], dim=1)
+                robot_base_is_pad = torch.zeros((robot_base_input.shape[1], robot_base_input.shape[0]),
+                                                dtype=torch.bool, device=img_src.device)
+                robot_head_is_pad = torch.zeros((robot_head_input.shape[1], robot_head_input.shape[0]),
+                                                dtype=torch.bool, device=img_src.device)
+                robot_velocity_is_pad = torch.zeros((robot_velocity_input.shape[1], robot_velocity_input.shape[0]),
+                                                    dtype=torch.bool, device=img_src.device)
+
+                robot_state_src = torch.cat([robot_state_src, robot_base_input, robot_head_input,
+                                             robot_velocity_input], dim=0)
+                robot_state_is_pad = torch.cat([robot_state_is_pad, robot_base_is_pad, robot_head_is_pad,
+                                                robot_velocity_is_pad], dim=1)
 
             # print(f'{left_states_input.shape=}, {robot_state_src.shape=} ,{img_src.shape=}')
             src = torch.cat([latent_input, img_src, robot_state_src], dim=0)
             pos = torch.cat([latent_pos, img_pos, robot_state_pos], dim=0)
-            is_pad = None ################# 8.16测试
+            is_pad = None  ################# 8.16测试
             # torch.cat([latent_is_pad, img_src_is_pad, robot_state_is_pad], dim=1)
-            
+
         else:
             assert len(img_src.shape) == 3
             # flatten NxHWxC to HWxNxC

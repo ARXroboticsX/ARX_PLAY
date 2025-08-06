@@ -1,0 +1,39 @@
+name: act
+channels:
+  - defaults
+  - conda-forge
+  - nvidia
+dependencies:
+  - python=3.12
+  - cuda=12.8
+  - pip
+  - pip:
+      - torch
+      - torchvision
+      - torchaudio
+      - pyquaternion
+      - pyyaml
+      - rospkg
+      - pexpect
+      - mujoco==2.3.7
+      - dm_control==1.0.14
+      - opencv-python
+      - numpy==1.26.4
+      - matplotlib
+      - einops
+      - packaging
+      - h5py
+      - ipython
+      - diffusers
+      - termcolor
+      - imageio
+      - onnx
+      - jupyter
+      - psutil
+      - h5py_cache
+      - transformers
+      - pynvml
+      - pyttsx3
+      - tensorboard
+      - transform
+      - --extra-index-url https://download.pytorch.org/whl/cu128
